@@ -8,6 +8,10 @@ const {
   generateChartImage,
 } = require("../controllers/admin.report.controller");
 
+const { protect, requireRole } = require("../middleware/authMiddleware");
+
+router.use(protect); 
+router.use(requireRole("admin"));
 // Export candidate list to Excel
 router.get("/candidates", exportCandidatesExcel);
 

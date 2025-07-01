@@ -18,6 +18,7 @@ const submissionSchema = new mongoose.Schema(
       default: "pending",
     },
     customFields: { type: Map, of: String, default: {} },
+extraFields: { type: Map, of: String, default: {} },
   },
   { timestamps: true }
 );

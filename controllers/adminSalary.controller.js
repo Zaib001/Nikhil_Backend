@@ -1,10 +1,11 @@
 const Salary = require("../models/Salary");
 const User = require("../models/User");
+const Timesheet = require('../models/Timesheet');
 const PTORequest = require("../models/PTORequest");
 const { Parser } = require("json2csv");
 const PDFDocument = require("pdfkit");
 const stream = require("stream");
-const sendEmail = require("../utils/sendEmail"); 
+const sendEmail = require("../utils/sendEmail");
 
 // Helper to calculate unpaid leaves
 const calculateUnpaidLeaves = async (userId, month, ptoLimit) => {
@@ -38,48 +39,132 @@ const getAllSalaries = async (req, res) => {
   const salaries = await Salary.find(filter).populate("userId", "name email role");
   res.json(salaries);
 };
-
-// ✅ Add salary
 const addSalary = async (req, res) => {
   const {
     userId,
-    month,
+    month, // format: "2025-06"
     baseSalary,
     bonus = 0,
     isBonusRecurring = false,
     bonusEndMonth,
     currency,
+    customFields = {},
+    mode = "month", // "month" or "year"
   } = req.body;
-
-  const exists = await Salary.findOne({ userId, month });
-  if (exists) return res.status(409).json({ message: "Salary already exists for this month." });
 
   const user = await User.findById(userId);
   if (!user) return res.status(404).json({ message: "User not found." });
 
   const ptoLimit = user.ptoLimit ?? 10;
   const workingDays = user.workingDays ?? 30;
+  const standardMonthlyHours = 160;
 
-  const unpaidLeaveDays = await calculateUnpaidLeaves(userId, month, ptoLimit);
-  const dailyRate = baseSalary / workingDays;
-  const deduction = dailyRate * unpaidLeaveDays;
-  const finalAmount = Math.round((baseSalary + bonus - deduction) * 100) / 100;
+  const calculateForMonth = async (year, monthNum) => {
+    let attemptMonth = monthNum;
+    let attemptYear = year;
 
-  const salary = await Salary.create({
-    userId,
-    month,
-    baseSalary,
-    bonus,
-    isBonusRecurring,
-    bonusEndMonth,
-    currency: currency || user.currency,
-    unpaidLeaveDays,
-    finalAmount,
-    remarks: unpaidLeaveDays > 0 ? `${unpaidLeaveDays} unpaid leave(s)` : "Full salary",
-  });
+    for (let i = 0; i < 12; i++) {
+      const paddedMonth = attemptMonth.toString().padStart(2, '0');
+      const monthStr = `${attemptYear}-${paddedMonth}`;
 
-  res.status(201).json({ message: "Salary calculated and added", salary });
+      const exists = await Salary.findOne({ userId, month: monthStr });
+      if (!exists) {
+        const unpaidLeaveDays = await calculateUnpaidLeaves(userId, monthStr, ptoLimit);
+
+        const startDate = new Date(attemptYear, attemptMonth - 1, 1);
+        const endDate = new Date(attemptYear, attemptMonth, 1);
+
+        const approvedTimesheets = await Timesheet.find({
+          user: userId,
+          status: 'approved',
+          from: { $lt: endDate },
+          to: { $gte: startDate },
+        });
+
+        const totalHours = approvedTimesheets.reduce((sum, t) => sum + (t.hours || 0), 0);
+        const hourlyRate = baseSalary / standardMonthlyHours;
+        let calculatedAmount = totalHours * hourlyRate;
+
+        const parsedBonus = Number(bonus) || 0;
+        const isRecurringBonusValid =
+          isBonusRecurring &&
+          bonusEndMonth &&
+          new Date(bonusEndMonth + "-01") >= new Date(monthStr + "-01");
+
+        const isOneTimeBonusValid = !isBonusRecurring && monthStr === month;
+
+        const shouldApplyBonus = parsedBonus && (isRecurringBonusValid || isOneTimeBonusValid);
+
+        if (shouldApplyBonus) {
+          calculatedAmount += parsedBonus;
+        }
+
+        const dailyRate = baseSalary / workingDays;
+        const leaveDeduction = dailyRate * unpaidLeaveDays;
+
+        const finalAmount = Math.round((calculatedAmount - leaveDeduction) * 100) / 100;
+
+        const formattedCustomFields = {};
+        for (const key in customFields) {
+          if (Object.hasOwnProperty.call(customFields, key)) {
+            formattedCustomFields[key] = String(customFields[key]);
+          }
+        }
+
+        const salary = await Salary.create({
+          userId,
+          month: monthStr,
+          baseSalary,
+          bonus: parsedBonus,
+          isBonusRecurring,
+          bonusEndMonth,
+          currency: currency || user.currency,
+          unpaidLeaveDays,
+          finalAmount,
+          customFields: formattedCustomFields,
+          remarks: unpaidLeaveDays > 0
+            ? `${unpaidLeaveDays} unpaid leave(s)`
+            : `Paid for ${totalHours} hour(s)`,
+        });
+
+        return { message: `Salary added for ${monthStr}`, salary };
+      }
+
+      attemptMonth++;
+      if (attemptMonth > 12) {
+        attemptMonth = 1;
+        attemptYear++;
+      }
+    }
+
+    return { message: "All months already have salary." };
+  };
+
+  if (mode === "year") {
+    const [year] = month.split('-');
+    const results = [];
+
+    for (let i = 1; i <= 12; i++) {
+      const result = await calculateForMonth(parseInt(year), i);
+      results.push(result);
+    }
+
+    return res.status(201).json({ message: "Yearly salaries processed", results });
+  }
+
+  const [year, monthNum] = month.split('-').map(Number);
+  const result = await calculateForMonth(year, monthNum);
+
+  if (result.salary) {
+    return res.status(201).json({ message: "Salary calculated and added", salary: result.salary });
+  } else {
+    return res.status(409).json(result);
+  }
 };
+
+
+
+
 
 // ✅ Update salary
 const updateSalary = async (req, res) => {

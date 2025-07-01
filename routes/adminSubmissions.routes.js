@@ -8,6 +8,7 @@ const {
   exportSubmissionsPDF,
   assignReviewer,
   getSubmissionsAnalytics,
+  importSubmissions
 } = require("../controllers/adminSubmissions.controller");
 
 const { protect, requireRole } = require("../middleware/authMiddleware");
@@ -23,5 +24,6 @@ router.put("/:id/reviewer", assignReviewer);
 router.get("/export/csv", exportSubmissionsCSV);
 router.get("/export/pdf", exportSubmissionsPDF);
 router.get("/analytics", getSubmissionsAnalytics);
+router.post("/import", importSubmissions);
 
 module.exports = router;

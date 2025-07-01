@@ -41,6 +41,7 @@ app.use("/api/admin/submissions", require("./routes/adminSubmissions.routes"));
 app.use("/api/admin/report", require("./routes/admin.report.routes"));
 app.use("/api/admin/pto", require("./routes/adminPto.routes"));
 app.use("/api/admin/salary", require("./routes/adminSalary.routes"));
+app.use("/api/admin/timesheets", require("./routes/adminTimesheet.js"));
 
 
 

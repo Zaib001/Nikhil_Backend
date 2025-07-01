@@ -79,7 +79,7 @@ const verifyOTP = async (req, res, next) => {
       expiresAt: { $gt: new Date() }, // ensure not expired
     });
 
-    console.log("📂 OTP Record:", otpRecord);
+    console.log("OTP Record:", otpRecord);
 
     if (!otpRecord) {
       return res.status(400).json({ message: "Invalid or expired OTP" });

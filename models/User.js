@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema({
   dob: Date,
   role: {
     type: String,
-    enum: ['admin', 'recruiter', 'candidate', 'company'],
+    enum: ['admin', 'recruiter', 'candidate'],
     default: 'recruiter',
   },
   isVerified: { type: Boolean, default: false },

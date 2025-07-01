@@ -11,6 +11,7 @@ const salarySchema = new mongoose.Schema({
   finalAmount: { type: Number },
   unpaidLeaveDays: { type: Number },
   remarks: { type: String },
+  customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -17,7 +17,6 @@ const submitRecruiterTimesheet = async (req, res) => {
     return res.status(400).json({ message: "All fields required" });
   }
 
-  const hourlyRate = 25;
 
   const timesheet = new Timesheet({
     user: req.user._id,
@@ -25,7 +24,6 @@ const submitRecruiterTimesheet = async (req, res) => {
     from,
     to,
     hours,
-    totalPay: hours * hourlyRate,
   });
 
   await timesheet.save();

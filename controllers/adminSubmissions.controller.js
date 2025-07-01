@@ -4,6 +4,24 @@ const stream = require("stream");
 const Submissions = require("../models/Submissions");
 const PDFDocument = require("pdfkit");
 const { Table } = require("pdfkit-table"); // auto-extended in newer versions
+const multer = require("multer");
+const XLSX = require("xlsx");
+const User = require("../models/User"); 
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    if (
+      file.mimetype === "application/vnd.ms-excel" || // .xls
+      file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || // .xlsx
+      file.mimetype === "text/csv"
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only Excel or CSV files are allowed"), false);
+    }
+  },
+});
 
 // Utility to format dates
 const formatDate = (date) => new Date(date).toLocaleDateString("en-GB");
@@ -99,7 +117,6 @@ const exportSubmissionsCSV = async (req, res) => {
 };
 
 // EXPORT to PDF
-
 const exportSubmissionsPDF = async (req, res) => {
   try {
     const submissions = await Submission.find()
@@ -168,6 +185,62 @@ const getSubmissionsAnalytics = async (req, res, next) => {
   }
 };
 
+const importSubmissions = [
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+
+      const knownFields = ["Candidate", "Recruiter", "Client", "Vendor", "Date", "Notes"];
+      const submissions = [];
+
+      for (const row of rows) {
+        const candidateName = row["Candidate"]?.trim();
+        const recruiterName = row["Recruiter"]?.trim();
+        const client = row["Client"]?.trim();
+
+        const candidateUser = await User.findOne({ name: candidateName });
+        const recruiterUser = await User.findOne({ name: recruiterName });
+
+
+        const meta = {};
+        for (const key in row) {
+          if (!knownFields.includes(key)) {
+            meta[key] = row[key];
+          }
+        }
+
+        submissions.push({
+          candidate: candidateUser._id,
+          recruiter: recruiterUser._id,
+          client,
+          vendor: row["Vendor"]?.trim() || "",
+          date: row["Date"] ? new Date(row["Date"]) : new Date(),
+          notes: row["Notes"] || "",
+          meta,
+        });
+      }
+
+      const inserted = await Submission.insertMany(submissions);
+
+      res.json({
+        success: true,
+        count: inserted.length,
+        message: "Submissions imported successfully",
+      });
+    } catch (err) {
+      console.error("Import error:", err);
+      res.status(500).json({ message: "Failed to import submissions" });
+    }
+  },
+];
+
+
+
 module.exports = {
   getAllSubmissions,
   updateSubmission,
@@ -176,4 +249,5 @@ module.exports = {
   exportSubmissionsCSV,
   exportSubmissionsPDF,
   getSubmissionsAnalytics,
+  importSubmissions
 };

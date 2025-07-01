@@ -27,7 +27,7 @@ const getRecruiterSubmissions = async (req, res) => {
 
 const createRecruiterSubmission = async (req, res) => {
   try {
-const { candidateId, client, vendor, date, notes, customFields } = req.body;
+    const { candidateId, client, vendor, date, notes, customFields } = req.body;
     const candidate = await User.findById(candidateId);
 
     if (!candidate || candidate.role !== "candidate") {
@@ -35,14 +35,14 @@ const { candidateId, client, vendor, date, notes, customFields } = req.body;
     }
 
     const submission = new Submission({
-  recruiter: req.user._id,
-  candidate: candidate._id,
-  client,
-  vendor,
-  date,
-  notes,
-  customFields: customFields || {}, 
-});
+      recruiter: req.user._id,
+      candidate: candidate._id,
+      client,
+      vendor,
+      date,
+      notes,
+      customFields: customFields || {},
+    });
 
 
     await submission.save();
@@ -57,22 +57,43 @@ const bulkImportSubmissions = async (req, res) => {
   try {
     const { submissions = [] } = req.body;
 
-    const formatted = submissions.map(s => ({
-      recruiterId: req.user._id,
-      candidate: s.candidate,
-      client: s.client,
-      vendor: s.vendor,
-      date: s.date || new Date(),
-      notes: s.notes || "",
-    }));
+    const formatted = submissions
+      .filter(s => s.candidate && s.recruiter && s.client) // ✅ Ensure required fields
+      .map(s => {
+        const {
+          candidate,
+          recruiter,
+          client,
+          vendor,
+          date,
+          notes,
+          ...extraFields
+        } = s;
+
+        return {
+          candidate,
+          recruiter,
+          client,
+          vendor: vendor || "",
+          date: date || new Date(),
+          notes: notes || "",
+          extraFields,
+        };
+      });
+
+    if (formatted.length === 0) {
+      return res.status(400).json({ message: "No valid rows to import" });
+    }
 
     await Submission.insertMany(formatted);
-    res.status(201).json({ message: "Bulk submissions added" });
+    res.status(201).json({ message: "Bulk submissions added", count: formatted.length });
   } catch (err) {
-    console.error("❌ Error in bulkImportSubmissions:", err.message, err.stack);
+    console.error("❌ Error in bulkImportSubmissions:", err);
     res.status(500).json({ message: "Failed to import submissions" });
   }
 };
+
+
 
 module.exports = {
   getRecruiterSubmissions,
