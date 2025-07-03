@@ -11,8 +11,23 @@ const salarySchema = new mongoose.Schema({
   finalAmount: { type: Number },
   unpaidLeaveDays: { type: Number },
   remarks: { type: String },
+  payType: { type: String, enum: ['fixed', 'percentage'], default: 'fixed' },
+  payTypeEffectiveDate: { type: Date },
+  fixedPhaseDuration: { type: Number }, // in months
+  vendorBillRate: { type: Number },
+  candidateShare: { type: Number }, // percentage
+  bonusAmount: { type: Number },
+  bonusType: { type: String, enum: ['one-time', 'recurring'], default: 'one-time' },
+  bonusFrequency: { type: String, enum: ['monthly', 'quarterly', 'annually'], default: 'monthly' },
+  bonusStartDate: { type: Date },
+  bonusEndDate: { type: Date },
+  enablePTO: { type: Boolean, default: false },
+  ptoType: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
+  ptoDaysAllocated: { type: Number },
+  previewMonth: { type: String },
   customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
   createdAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model("Salary", salarySchema);
+

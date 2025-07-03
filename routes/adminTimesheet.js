@@ -6,6 +6,7 @@ const {
   createTimesheet,
   updateTimesheet,
   deleteTimesheet,
+  generateTimesheetPDF
 } = require("../controllers/adminTimesheetController");
 
 const { protect, requireRole } = require("../middleware/authMiddleware");
@@ -18,5 +19,6 @@ router.get("/:id", getTimesheetById);
 router.post("/", createTimesheet);
 router.put("/:id", updateTimesheet);
 router.delete("/:id", deleteTimesheet);
+router.get("/:userId/:month", generateTimesheetPDF);
 
 module.exports = router;
