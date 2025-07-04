@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const salarySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   month: { type: String, required: true }, // Format: "2025-06"
-  baseSalary: { type: Number, required: true },
+  base: { type: Number, required: true },
   bonus: { type: Number, default: 0 },
   isBonusRecurring: { type: Boolean, default: false },
   bonusEndMonth: { type: String }, // Format: "2025-08"
@@ -12,6 +12,7 @@ const salarySchema = new mongoose.Schema({
   unpaidLeaveDays: { type: Number },
   remarks: { type: String },
   payType: { type: String, enum: ['fixed', 'percentage'], default: 'fixed' },
+  mode: { type: String, enum: ['month', 'annum'], default: 'month' },
   payTypeEffectiveDate: { type: Date },
   fixedPhaseDuration: { type: Number }, // in months
   vendorBillRate: { type: Number },

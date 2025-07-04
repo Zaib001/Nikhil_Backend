@@ -42,17 +42,12 @@ const getAllSalaries = async (req, res) => {
 const addSalary = async (req, res) => {
   const {
     userId,
-    month, // format: "2025-06"
-    baseSalary,
+    month,
+    base,
     bonus = 0,
-    isBonusRecurring = false,
-    bonusEndMonth,
     currency,
-    customFields = {},
-    mode = "month", // "month" or "year"
-    payType = "fixed", 
-    payTypeEffectiveDate,
-    fixedPhaseDuration = 0,
+    payType = "fixed",
+    mode = "month",
     vendorBillRate = 0,
     candidateShare = 0,
     bonusAmount = 0,
@@ -60,153 +55,129 @@ const addSalary = async (req, res) => {
     bonusFrequency = "monthly",
     bonusStartDate,
     bonusEndDate,
+    isBonusRecurring = false,
+    bonusEndMonth,
     enablePTO = false,
     ptoType = "monthly",
     ptoDaysAllocated = 0,
+    customFields = {},
     previewMonth,
   } = req.body;
 
   try {
-    // Log the incoming request data
-    console.log("Received request data:", req.body);
-
-    // Validate required fields
-    if (!userId || !month || !baseSalary) {
-      console.log("Validation failed: Missing required fields");
+    if (!userId || !month || !base) {
       return res.status(400).json({ message: "Missing required fields (userId, month, baseSalary)" });
     }
 
-    // Validate that the base salary is a valid number
-    if (isNaN(baseSalary) || baseSalary < 1000) {
-      console.log("Validation failed: Invalid baseSalary");
+    if (isNaN(base) || base < 1000) {
       return res.status(400).json({ message: "Base salary must be a valid number and at least 1000" });
     }
 
-    // Validate that month is in correct format (YYYY-MM)
     const monthPattern = /^\d{4}-\d{2}$/;
     if (!monthPattern.test(month)) {
-      console.log("Validation failed: Invalid month format");
       return res.status(400).json({ message: "Month must be in 'YYYY-MM' format" });
     }
 
-    // Ensure the user exists in the system
     const user = await User.findById(userId);
-    if (!user) {
-      console.log("User not found:", userId);
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    console.log("User found:", user);
-
+    const userRole = user.role;
     const ptoLimit = user.ptoLimit ?? 10;
     const workingDays = user.workingDays ?? 30;
     const standardMonthlyHours = 160;
 
-    const calculateForMonth = async (year, monthNum) => {
-      let attemptMonth = monthNum;
-      let attemptYear = year;
-
-      for (let i = 0; i < 12; i++) {
-        const paddedMonth = attemptMonth.toString().padStart(2, '0');
-        const monthStr = `${attemptYear}-${paddedMonth}`;
-
-        const exists = await Salary.findOne({ userId, month: monthStr });
-        if (!exists) {
-          const unpaidLeaveDays = await calculateUnpaidLeaves(userId, monthStr, ptoLimit);
-
-          const startDate = new Date(attemptYear, attemptMonth - 1, 1);
-          const endDate = new Date(attemptYear, attemptMonth, 1);
-
-          const approvedTimesheets = await Timesheet.find({
-            user: userId,
-            status: 'approved',
-            from: { $lt: endDate },
-            to: { $gte: startDate },
-          });
-
-          const totalHours = approvedTimesheets.reduce((sum, t) => sum + (t.hours || 0), 0);
-          const hourlyRate = baseSalary / standardMonthlyHours;
-          let calculatedAmount = totalHours * hourlyRate;
-
-          const parsedBonus = Number(bonusAmount) || 0;
-          const isRecurringBonusValid =
-            isBonusRecurring &&
-            bonusEndMonth &&
-            new Date(bonusEndMonth + "-01") >= new Date(monthStr + "-01");
-
-          const isOneTimeBonusValid = !isBonusRecurring && monthStr === month;
-
-          const shouldApplyBonus = parsedBonus && (isRecurringBonusValid || isOneTimeBonusValid);
-
-          if (shouldApplyBonus) {
-            calculatedAmount += parsedBonus;
-          }
-
-          const dailyRate = baseSalary / workingDays;
-          const leaveDeduction = dailyRate * unpaidLeaveDays;
-
-          const finalAmount = Math.round((calculatedAmount - leaveDeduction) * 100) / 100;
-
-          const formattedCustomFields = {};
-          for (const key in customFields) {
-            if (Object.hasOwnProperty.call(customFields, key)) {
-              formattedCustomFields[key] = String(customFields[key]);
-            }
-          }
-
-          const salary = await Salary.create({
-            userId,
-            month: monthStr,
-            baseSalary,
-            bonus: parsedBonus,
-            isBonusRecurring,
-            bonusEndMonth,
-            currency: currency || user.currency,
-            unpaidLeaveDays,
-            finalAmount,
-            payType,
-            payTypeEffectiveDate,
-            fixedPhaseDuration,
-            vendorBillRate,
-            candidateShare,
-            bonusAmount,
-            bonusType,
-            bonusFrequency,
-            bonusStartDate,
-            bonusEndDate,
-            enablePTO,
-            ptoType,
-            ptoDaysAllocated,
-            previewMonth,
-            customFields: formattedCustomFields,
-            remarks: unpaidLeaveDays > 0
-              ? `${unpaidLeaveDays} unpaid leave(s)`
-              : `Paid for ${totalHours} hour(s)`,
-          });
-
-          return { message: `Salary added for ${monthStr}`, salary };
-        }
-
-        attemptMonth++;
-        if (attemptMonth > 12) {
-          attemptMonth = 1;
-          attemptYear++;
-        }
-      }
-
-      return { message: "All months already have salary." };
-    };
-
-    const [year, monthNum] = month.split('-').map(Number);
-    const result = await calculateForMonth(year, monthNum);
-
-    if (result.salary) {
-      console.log("Salary successfully added:", result.salary);
-      return res.status(201).json({ message: "Salary calculated and added", salary: result.salary });
-    } else {
-      console.log("Salary already exists for the month:", month);
-      return res.status(409).json(result);
+    // === Recruiter Flow ===
+    if (userRole === "recruiter") {
+      const monthlyBase = mode === "annum" ? base / 12 : base;
+      const salary = await Salary.create({
+        userId,
+        month,
+        base,
+        finalAmount: monthlyBase,
+        currency: currency || user.currency,
+        remarks: "Recruiter salary entry",
+        mode,
+      });
+      return res.status(201).json({ message: "Recruiter salary added", salary });
     }
+
+    // === Candidate Flow ===
+    const start = new Date(`${month}-01`);
+    const end = new Date(`${month}-31`);
+
+    const unpaidLeaveDays = await calculateUnpaidLeaves(userId, month, ptoLimit);
+    const approvedTimesheets = await Timesheet.find({
+      user: userId,
+      status: "approved",
+      from: { $lt: end },
+      to: { $gte: start },
+    });
+
+    const totalHours = approvedTimesheets.reduce((sum, t) => sum + (t.hours || 0), 0);
+    let hourlyRate = 0;
+    let finalAmount = 0;
+
+    if (payType === "fixed") {
+      const monthlySalary = mode === "annum" ? base / 12 : base;
+      hourlyRate = monthlySalary / standardMonthlyHours;
+      finalAmount = hourlyRate * totalHours;
+    } else if (payType === "percentage") {
+      finalAmount = (vendorBillRate * candidateShare) / 100;
+      hourlyRate = totalHours ? finalAmount / totalHours : 0;
+    }
+
+    // Bonus Logic
+    const parsedBonus = Number(bonusAmount) || 0;
+    const isRecurringBonusValid =
+      isBonusRecurring && bonusEndMonth && new Date(bonusEndMonth + "-01") >= new Date(month + "-01");
+    const isOneTimeBonusValid = !isBonusRecurring && month === month;
+
+    if (parsedBonus && (isRecurringBonusValid || isOneTimeBonusValid)) {
+      finalAmount += parsedBonus;
+    }
+
+    // Leave deduction (optional)
+    const leaveDeduction =
+      enablePTO && unpaidLeaveDays > 0
+        ? (base / workingDays) * unpaidLeaveDays
+        : 0;
+
+    const formattedCustomFields = {};
+    for (const key in customFields) {
+      formattedCustomFields[key] = String(customFields[key]);
+    }
+
+    const salary = await Salary.create({
+      userId,
+      month,
+      base,
+      finalAmount: Math.round((finalAmount - leaveDeduction) * 100) / 100,
+      hourlyRate,
+      bonus: parsedBonus,
+      bonusType,
+      bonusFrequency,
+      bonusStartDate,
+      bonusEndDate,
+      isBonusRecurring,
+      bonusEndMonth,
+      currency: currency || user.currency,
+      payType,
+      mode,
+      vendorBillRate,
+      candidateShare,
+      enablePTO,
+      ptoType,
+      ptoDaysAllocated,
+      customFields: formattedCustomFields,
+      previewMonth,
+      unpaidLeaveDays,
+      remarks:
+        unpaidLeaveDays > 0
+          ? `${unpaidLeaveDays} unpaid leave(s)`
+          : `Paid for ${totalHours} hour(s)`,
+    });
+
+    return res.status(201).json({ message: "Candidate salary added", salary });
   } catch (err) {
     console.error("Error in addSalary:", err.message);
     return res.status(500).json({ message: "Internal server error" });
@@ -215,32 +186,46 @@ const addSalary = async (req, res) => {
 
 
 
-
-
-
-
-// ✅ Update salary
 const updateSalary = async (req, res) => {
-  const { baseSalary, bonus, isBonusRecurring, bonusEndMonth, currency, payType, payTypeEffectiveDate, fixedPhaseDuration, vendorBillRate, candidateShare, bonusAmount, bonusType, bonusFrequency, bonusStartDate, bonusEndDate, enablePTO, ptoType, ptoDaysAllocated, previewMonth } = req.body;
+  const {
+    base,
+    bonus,
+    currency,
+    payType,
+    mode,
+    vendorBillRate,
+    candidateShare,
+    bonusAmount,
+    bonusType,
+    bonusFrequency,
+    bonusStartDate,
+    bonusEndDate,
+    isBonusRecurring,
+    bonusEndMonth,
+    enablePTO,
+    ptoType,
+    ptoDaysAllocated,
+    previewMonth,
+  } = req.body;
+
   const salary = await Salary.findById(req.params.id);
   if (!salary) return res.status(404).json({ message: "Salary not found" });
 
   Object.assign(salary, {
-    baseSalary: baseSalary ?? salary.baseSalary,
+    base: base ?? salary.base,
     bonus: bonus ?? salary.bonus,
-    isBonusRecurring: isBonusRecurring ?? salary.isBonusRecurring,
-    bonusEndMonth: bonusEndMonth ?? salary.bonusEndMonth,
-    currency: currency ?? salary.currency,
-    payType: payType ?? salary.payType,
-    payTypeEffectiveDate: payTypeEffectiveDate ?? salary.payTypeEffectiveDate,
-    fixedPhaseDuration: fixedPhaseDuration ?? salary.fixedPhaseDuration,
-    vendorBillRate: vendorBillRate ?? salary.vendorBillRate,
-    candidateShare: candidateShare ?? salary.candidateShare,
     bonusAmount: bonusAmount ?? salary.bonusAmount,
     bonusType: bonusType ?? salary.bonusType,
     bonusFrequency: bonusFrequency ?? salary.bonusFrequency,
     bonusStartDate: bonusStartDate ?? salary.bonusStartDate,
     bonusEndDate: bonusEndDate ?? salary.bonusEndDate,
+    isBonusRecurring: isBonusRecurring ?? salary.isBonusRecurring,
+    bonusEndMonth: bonusEndMonth ?? salary.bonusEndMonth,
+    currency: currency ?? salary.currency,
+    payType: payType ?? salary.payType,
+    mode: mode ?? salary.mode,
+    vendorBillRate: vendorBillRate ?? salary.vendorBillRate,
+    candidateShare: candidateShare ?? salary.candidateShare,
     enablePTO: enablePTO ?? salary.enablePTO,
     ptoType: ptoType ?? salary.ptoType,
     ptoDaysAllocated: ptoDaysAllocated ?? salary.ptoDaysAllocated,
@@ -250,6 +235,7 @@ const updateSalary = async (req, res) => {
   await salary.save();
   res.json({ message: "Salary updated", salary });
 };
+
 
 
 // ✅ Delete salary
