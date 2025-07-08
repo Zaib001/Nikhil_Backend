@@ -1,6 +1,5 @@
 const User = require("../models/User");
 
-// GET /api/recruiter/candidates
 const getCandidates = async (req, res) => {
   try {
     const candidates = await User.find({
@@ -13,7 +12,6 @@ const getCandidates = async (req, res) => {
   }
 };
 
-// POST /api/recruiter/candidates
 const createCandidate = async (req, res) => {
   try {
     const { name, email, password, dob, experience, tech, customFields = {} } = req.body;
@@ -32,7 +30,7 @@ const createCandidate = async (req, res) => {
       dob,
       experience,
       tech,
-      customFields, // <-- Store additional dynamic fields here
+      customFields, 
     });
 
     await newCandidate.save();
@@ -43,8 +41,6 @@ const createCandidate = async (req, res) => {
   }
 };
 
-
-// PUT /api/recruiter/candidates/:id
 const updateCandidate = async (req, res) => {
   try {
     const { name, dob, experience, tech } = req.body;
@@ -60,7 +56,6 @@ const updateCandidate = async (req, res) => {
   }
 };
 
-// DELETE /api/recruiter/candidates/:id
 const deleteCandidate = async (req, res) => {
   try {
     const deleted = await User.findOneAndDelete({

@@ -1,7 +1,6 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 
-// GET all users (excluding passwords)
 const getAllUsers = async (req, res, next) => {
   try {
     const users = await User.find()
@@ -13,7 +12,6 @@ const getAllUsers = async (req, res, next) => {
   }
 };
 
-// TOGGLE isVerified status
 const toggleUserVerification = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
@@ -32,7 +30,6 @@ const toggleUserVerification = async (req, res, next) => {
   }
 };
 
-// CREATE new user (Admin action)
 const createUser = async (req, res, next) => {
   try {
     let {
@@ -84,8 +81,6 @@ const createUser = async (req, res, next) => {
     next(err);
   }
 };
-
-// UPDATE existing user
 const updateUser = async (req, res, next) => {
   try {
     const {
@@ -127,8 +122,6 @@ const updateUser = async (req, res, next) => {
     next(err);
   }
 };
-
-// DELETE user
 const deleteUser = async (req, res, next) => {
   try {
     const deleted = await User.findByIdAndDelete(req.params.id);
@@ -140,7 +133,6 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
-// TOGGLE active/inactive user status
 const toggleUserStatus = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
@@ -159,7 +151,6 @@ const toggleUserStatus = async (req, res, next) => {
   }
 };
 
-// ASSIGN permissions to user
 const assignPermissions = async (req, res, next) => {
   try {
     const { permissions } = req.body;

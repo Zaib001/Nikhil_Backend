@@ -1,4 +1,3 @@
-// controller/adminDashboardController.js
 const User = require("../models/User");
 const Submission = require("../models/Submissions");
 const PTORequest = require("../models/PTORequest");

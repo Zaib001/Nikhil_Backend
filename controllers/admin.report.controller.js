@@ -5,7 +5,6 @@ const nodemailer = require("nodemailer");
 const { createCanvas } = require("canvas");
 const { ChartJSNodeCanvas } = require("chartjs-node-canvas");
 
-// Export candidate list to Excel
 const exportCandidatesExcel = async (req, res) => {
   const candidates = await User.find({ role: "candidate" });
   const data = candidates.map(c => ({
@@ -23,7 +22,6 @@ const exportCandidatesExcel = async (req, res) => {
   res.send(buffer);
 };
 
-// Submission analytics (grouped bar chart + pie data)
 const getSubmissionAnalytics = async (req, res) => {
   const submissions = await Submission.find().populate("recruiter", "name");
 
@@ -55,7 +53,6 @@ const getSubmissionAnalytics = async (req, res) => {
 };
 
 
-// Conversion % only
 const getConversionReport = async (req, res) => {
   const submissions = await Submission.find();
   const recruiterStats = {};
@@ -77,7 +74,6 @@ const getConversionReport = async (req, res) => {
   res.json(data);
 };
 
-// Email report as attachment (Excel or summary text)
 const sendReportByEmail = async (req, res) => {
   const { to, subject, message } = req.body;
 
@@ -90,16 +86,15 @@ const sendReportByEmail = async (req, res) => {
   });
 
   const info = await transporter.sendMail({
-    from: `"Logicnosh Reports" <${process.env.MAIL_USER}>`,
+    from: `" Reports" <${process.env.MAIL_USER}>`,
     to,
     subject: subject || "Performance Report",
-    text: message || "Attached is the requested report from Logicnosh admin panel.",
+    text: message || "Attached is the requested report from admin panel.",
   });
 
   res.json({ success: true, info });
 };
 
-// Chart image export (bar chart)
 const generateChartImage = async (req, res) => {
   const submissions = await Submission.find();
   const recruiterMap = {};

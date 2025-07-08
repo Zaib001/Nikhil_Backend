@@ -54,7 +54,7 @@ const importExcelSubmissions = async (req, res) => {
     console.log(submissions)
     for (const s of submissions) {
       const candidateUser = await User.findOne({ name: s.candidate, role: "candidate" });
-      if (!candidateUser) continue; // skip if candidate doesn't exist
+      if (!candidateUser) continue; 
 
       formatted.push({
         recruiter: recruiterId,

@@ -30,11 +30,11 @@ const userSchema = new mongoose.Schema({
   },
   ptoLimit: {
     type: Number,
-    default: 10, // ✅ Editable via admin
+    default: 10, 
   },
   workingDays: {
     type: Number,
-    default: 30, // ✅ Editable via admin
+    default: 30, 
   },
   createdAt: {
     type: Date,

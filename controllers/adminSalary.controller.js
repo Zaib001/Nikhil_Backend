@@ -7,7 +7,6 @@ const PDFDocument = require("pdfkit");
 const stream = require("stream");
 const sendEmail = require("../utils/sendEmail");
 
-// Helper to calculate unpaid leaves
 const calculateUnpaidLeaves = async (userId, month, ptoLimit) => {
   const [year, monthNum] = month.split("-").map(Number);
   const start = new Date(`${month}-01`);
@@ -32,7 +31,6 @@ const calculateUnpaidLeaves = async (userId, month, ptoLimit) => {
   return unpaidDays;
 };
 
-// ✅ Get all salaries
 const getAllSalaries = async (req, res) => {
   const { month } = req.query;
   const filter = month ? { month } : {};
@@ -86,7 +84,6 @@ const addSalary = async (req, res) => {
     const workingDays = user.workingDays ?? 30;
     const standardMonthlyHours = 160;
 
-    // === Recruiter Flow ===
     if (userRole === "recruiter") {
       const monthlyBase = mode === "annum" ? base / 12 : base;
       const salary = await Salary.create({
@@ -101,7 +98,6 @@ const addSalary = async (req, res) => {
       return res.status(201).json({ message: "Recruiter salary added", salary });
     }
 
-    // === Candidate Flow ===
     const start = new Date(`${month}-01`);
     const end = new Date(`${month}-31`);
 
@@ -238,7 +234,6 @@ const updateSalary = async (req, res) => {
 
 
 
-// ✅ Delete salary
 const deleteSalary = async (req, res) => {
   const deleted = await Salary.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ message: "Salary not found" });

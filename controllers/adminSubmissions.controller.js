@@ -3,7 +3,7 @@ const { Parser } = require("json2csv");
 const stream = require("stream");
 const Submissions = require("../models/Submissions");
 const PDFDocument = require("pdfkit");
-const { Table } = require("pdfkit-table"); // auto-extended in newer versions
+const { Table } = require("pdfkit-table"); 
 const multer = require("multer");
 const XLSX = require("xlsx");
 const User = require("../models/User"); 
@@ -36,8 +36,8 @@ const getAllSubmissions = async (req, res) => {
     if (endDate) query.date = { ...query.date, $lte: new Date(endDate) };
 
     const submissions = await Submissions.find(query)
-      .populate("candidate", "name email")  // assuming `name` is in User model
-      .populate("recruiter", "name email")  // populate name only
+      .populate("candidate", "name email") 
+      .populate("recruiter", "name email")  
       .sort({ date: -1 });
 
     res.json({ submissions });
@@ -131,10 +131,8 @@ const exportSubmissionsPDF = async (req, res) => {
     res.setHeader("Content-Disposition", "attachment; filename=submissions.pdf");
     doc.pipe(res);
 
-    // Title
     doc.fontSize(18).text("All Submissions", { align: "center" }).moveDown(1.5);
 
-    // Table headers
     const tableData = {
       headers: ["Candidate", "Recruiter", "Client", "Vendor", "Date", "Notes"],
       rows: submissions.map((s) => [
@@ -147,7 +145,6 @@ const exportSubmissionsPDF = async (req, res) => {
       ]),
     };
 
-    // Draw the table
     await doc.table(tableData, {
       prepareHeader: () => doc.font("Helvetica-Bold").fontSize(12),
       prepareRow: (row, i) => doc.font("Helvetica").fontSize(10),

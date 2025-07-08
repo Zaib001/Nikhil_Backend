@@ -4,7 +4,7 @@ const PTORequest = require("../models/PTORequest");
 const getAllPtoRequests = async (req, res) => {
   try {
     const requests = await PTORequest.find()
-      .populate("requestedBy", "name email") // ✅ corrected field
+      .populate("requestedBy", "name email") 
       .sort({ createdAt: -1 });
 
     res.status(200).json(requests);

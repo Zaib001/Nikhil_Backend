@@ -4,7 +4,7 @@ const path = require("path");
 
 exports.uploadDocument = async (req, res) => {
   try {
-    const fileUrl = `/uploads/${req.file.filename}`; // update if using cloud
+    const fileUrl = `/uploads/${req.file.filename}`; 
     const document = await Document.create({
       user: req.user._id,
       fileUrl,
@@ -42,7 +42,7 @@ exports.deleteDocument = async (req, res) => {
       console.warn("File not found when deleting:", filePath);
     }
 
-    await doc.deleteOne(); // use deleteOne instead of remove (deprecation warning safe)
+    await doc.deleteOne(); 
     res.json({ message: "Deleted successfully" });
 
   } catch (err) {

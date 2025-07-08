@@ -4,14 +4,12 @@ const fs = require("fs");
 const PDFDocument = require("pdfkit");
 const path = require('path');
 
-const uploadPath = path.join(__dirname, '..', 'uploads');  // Ensure uploads is relative to the root of your project
+const uploadPath = path.join(__dirname, '..', 'uploads'); 
 
-// Ensure the uploads directory exists
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
 
-// GET /api/admin/timesheets
 const getAllTimesheets = async (req, res) => {
   try {
     const timesheets = await Timesheet.find().populate("user");
@@ -21,7 +19,6 @@ const getAllTimesheets = async (req, res) => {
   }
 };
 
-// GET /api/admin/timesheets/:id
 const getTimesheetById = async (req, res) => {
   try {
     const timesheet = await Timesheet.findById(req.params.id).populate("user");
@@ -32,7 +29,6 @@ const getTimesheetById = async (req, res) => {
   }
 };
 
-// POST /api/admin/timesheets
 const createTimesheet = async (req, res) => {
   try {
     const {
@@ -66,7 +62,6 @@ const createTimesheet = async (req, res) => {
   }
 };
 
-// PUT /api/admin/timesheets/:id
 const updateTimesheet = async (req, res) => {
   try {
     const updated = await Timesheet.findByIdAndUpdate(req.params.id, req.body, {
@@ -81,7 +76,6 @@ const updateTimesheet = async (req, res) => {
   }
 };
 
-// DELETE /api/admin/timesheets/:id
 const deleteTimesheet = async (req, res) => {
   try {
     const deleted = await Timesheet.findByIdAndDelete(req.params.id);
@@ -92,41 +86,33 @@ const deleteTimesheet = async (req, res) => {
   }
 };
 
-// GET /api/admin/timesheets/:userId/:month - Generate PDF for user
 const generateTimesheetPDF = async (req, res) => {
   const { userId, month } = req.params;
 
   try {
-    // Fetch all timesheets for the user and month
     const timesheets = await Timesheet.find({ user: userId, month });
 
     if (!timesheets || timesheets.length === 0) {
       return res.status(404).json({ message: "No timesheets found for this month" });
     }
 
-    // Create a new PDF document
     const doc = new PDFDocument();
     const filePath = path.join(uploadPath, `timesheet-${userId}-${month}.pdf`);
     
     console.log("Saving PDF to: ", filePath);
 
-    // Ensure the directory exists
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
 
-    // Set response headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=timesheet-${userId}-${month}.pdf`);
 
-    // Pipe the PDF directly to the response
     doc.pipe(res);
 
-    // Add content to the PDF
     doc.fontSize(16).text(`Timesheet for ${userId} - ${month}`, { align: "center" });
     doc.moveDown(1);
 
-    // Loop through the timesheets
     timesheets.forEach((timesheet, index) => {
       if (index > 0) doc.addPage();
 
@@ -153,7 +139,6 @@ const generateTimesheetPDF = async (req, res) => {
       doc.moveDown(1);
     });
 
-    // Finalize the PDF
     doc.end();
 
   } catch (error) {

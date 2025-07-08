@@ -4,7 +4,7 @@ const router = express.Router();
 const { uploadDocument, getDocuments, deleteDocument } = require("../controllers/document.controller");
 const { protect } = require("../middleware/authMiddleware");
 
-const upload = multer({ dest: "uploads/" }); // or configure Cloudinary, S3, etc.
+const upload = multer({ dest: "uploads/" }); 
 
 router.post("/", protect, upload.single("file"), uploadDocument);
 router.get("/", protect, getDocuments);

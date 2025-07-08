@@ -44,7 +44,6 @@ const registerUser = async (req, res, next) => {
       expiresAt: Date.now() + 10 * 60 * 1000, // 10 mins
     });
 
-    // ✅ Send OTP email
     await sendEmail(
       email,
       "Verify Your Email",
@@ -53,7 +52,7 @@ const registerUser = async (req, res, next) => {
 
     res.status(201).json({ message: "Registered successfully. Please verify using the OTP sent to your email." });
   } catch (error) {
-    console.error("❌ Registration error:", error);
+    console.error("Registration error:", error);
     next(error);
   }
 };
@@ -63,8 +62,6 @@ const registerUser = async (req, res, next) => {
 const verifyOTP = async (req, res, next) => {
   try {
     const { email, otp } = req.body;
-
-    console.log("🔎 Verifying OTP for:", email, "with OTP:", otp);
 
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
@@ -76,7 +73,7 @@ const verifyOTP = async (req, res, next) => {
     const otpRecord = await Otp.findOne({
       userId: user._id,
       otp,
-      expiresAt: { $gt: new Date() }, // ensure not expired
+      expiresAt: { $gt: new Date() }, 
     });
 
     console.log("OTP Record:", otpRecord);
@@ -88,11 +85,11 @@ const verifyOTP = async (req, res, next) => {
     user.isVerified = true;
     await user.save();
 
-    await Otp.deleteMany({ userId: user._id }); // clear any OTPs
+    await Otp.deleteMany({ userId: user._id }); 
 
     return res.status(200).json({ message: "OTP verified successfully!" });
   } catch (error) {
-    console.error("❌ Error verifying OTP:", error);
+    console.error("Error verifying OTP:", error);
     next(error);
   }
 };
@@ -109,22 +106,18 @@ const loginUser = async (req, res, next) => {
 
     const user = await User.findOne({ email: normalizedEmail });
 
-    // Validate user existence and password
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Email verification check
     if (!user.isVerified) {
       return res.status(403).json({ message: "Please verify your email first." });
     }
 
-    // Inactive user check
     if (user.status === "inactive") {
       return res.status(403).json({ message: "Your account is currently inactive. Please contact admin." });
     }
 
-    // Successful login
     res.json({
       success: true,
       token: generateToken(user),

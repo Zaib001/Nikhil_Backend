@@ -9,10 +9,10 @@ const timesheetSchema = new mongoose.Schema({
   },
   from: { type: Date, required: true },
   to: { type: Date, required: true },
-  filename: { type: String }, // URL or path to the screenshot image
-  month: { type: String }, // To track the month for PDF generation
-  hours: { type: Number }, // Optional, if you want to store hours directly
-  totalPay: { type: Number }, // Optional, if you want to calculate total pay
+  filename: { type: String }, 
+  month: { type: String }, 
+  hours: { type: Number }, 
+  totalPay: { type: Number },
   status: {
     type: String,
     enum: ["pending", "approved", "rejected"],

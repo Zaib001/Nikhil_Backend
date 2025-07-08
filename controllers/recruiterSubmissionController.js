@@ -20,7 +20,7 @@ const getRecruiterSubmissions = async (req, res) => {
 
     res.status(200).json(submissions);
   } catch (err) {
-    console.error("❌ Error in getRecruiterSubmissions:", err.message, err.stack);
+    console.error("Error in getRecruiterSubmissions:", err.message, err.stack);
     res.status(500).json({ message: "Failed to fetch submissions" });
   }
 };
@@ -48,7 +48,7 @@ const createRecruiterSubmission = async (req, res) => {
     await submission.save();
     res.status(201).json(submission);
   } catch (err) {
-    console.error("❌ Error in createRecruiterSubmission:", err.message, err.stack);
+    console.error("Error in createRecruiterSubmission:", err.message, err.stack);
     res.status(500).json({ message: "Failed to add submission" });
   }
 };
@@ -58,7 +58,7 @@ const bulkImportSubmissions = async (req, res) => {
     const { submissions = [] } = req.body;
 
     const formatted = submissions
-      .filter(s => s.candidate && s.recruiter && s.client) // ✅ Ensure required fields
+      .filter(s => s.candidate && s.recruiter && s.client) 
       .map(s => {
         const {
           candidate,
@@ -88,7 +88,7 @@ const bulkImportSubmissions = async (req, res) => {
     await Submission.insertMany(formatted);
     res.status(201).json({ message: "Bulk submissions added", count: formatted.length });
   } catch (err) {
-    console.error("❌ Error in bulkImportSubmissions:", err);
+    console.error("Error in bulkImportSubmissions:", err);
     res.status(500).json({ message: "Failed to import submissions" });
   }
 };
