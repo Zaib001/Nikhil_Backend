@@ -1,0 +1,126 @@
+{
+  "us": [
+    {
+      "date": "2025-01-01",
+      "name": "New Year's Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-01-20",
+      "name": "Martin Luther King Jr. Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-02-17",
+      "name": "Presidents' Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-05-26",
+      "name": "Memorial Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-06-19",
+      "name": "Juneteenth",
+      "country": "US"
+    },
+    {
+      "date": "2025-07-04",
+      "name": "Independence Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-09-01",
+      "name": "Labor Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-10-13",
+      "name": "Columbus Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-11-11",
+      "name": "Veterans Day",
+      "country": "US"
+    },
+    {
+      "date": "2025-11-27",
+      "name": "Thanksgiving",
+      "country": "US"
+    },
+    {
+      "date": "2025-12-25",
+      "name": "Christmas Day",
+      "country": "US"
+    }
+  ],
+  "india": [
+    {
+      "date": "2025-01-26",
+      "name": "Republic Day",
+      "country": "IN"
+    },
+    {
+      "date": "2025-03-14",
+      "name": "Holi",
+      "country": "IN"
+    },
+    {
+      "date": "2025-03-31",
+      "name": "Eid-ul-Fitr (tentative)",
+      "country": "IN"
+    },
+    {
+      "date": "2025-05-12",
+      "name": "Buddha Purnima",
+      "country": "IN"
+    },
+    {
+      "date": "2025-06-06",
+      "name": "Bakrid (tentative)",
+      "country": "IN"
+    },
+    {
+      "date": "2025-07-06",
+      "name": "Muharram",
+      "country": "IN"
+    },
+    {
+      "date": "2025-08-15",
+      "name": "Independence Day",
+      "country": "IN"
+    },
+    {
+      "date": "2025-08-16",
+      "name": "Janmashtami",
+      "country": "IN"
+    },
+    {
+      "date": "2025-10-02",
+      "name": "Gandhi Jayanti",
+      "country": "IN"
+    },
+    {
+      "date": "2025-10-01",
+      "name": "Dussehra",
+      "country": "IN"
+    },
+    {
+      "date": "2025-10-21",
+      "name": "Diwali",
+      "country": "IN"
+    },
+    {
+      "date": "2025-11-05",
+      "name": "Guru Nanak Jayanti",
+      "country": "IN"
+    },
+    {
+      "date": "2025-12-25",
+      "name": "Christmas Day",
+      "country": "IN"
+    }
+  ]
+}
