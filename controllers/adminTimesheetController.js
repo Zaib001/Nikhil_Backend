@@ -12,10 +12,35 @@ if (!fs.existsSync(uploadPath)) {
 
 const getAllTimesheets = async (req, res) => {
   try {
-    const timesheets = await Timesheet.find().populate("user");
+    const timesheets = await Timesheet.aggregate([
+      {
+        $sort: { updatedAt: -1 } 
+      },
+      {
+        $group: {
+          _id: "$user",          
+          doc: { $first: "$$ROOT" } 
+        }
+      },
+      {
+        $replaceRoot: { newRoot: "$doc" }
+      },
+      {
+        $lookup: {
+          from: "users",           
+          localField: "user",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      {
+        $unwind: "$user"
+      }
+    ]);
+
     res.json(timesheets);
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch timesheets", error: err });
+    res.status(500).json({ message: "Failed to fetch unique user timesheets", error: err });
   }
 };
 
