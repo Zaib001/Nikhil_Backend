@@ -1,5 +1,6 @@
 const Submission = require("../models/Submissions");
 const User = require("../models/User");
+const XLSX = require("xlsx");
 
 // GET: All recruiter submissions with search, sort, and populated candidate name
 const getRecruiterSubmissions = async (req, res) => {
@@ -52,84 +53,105 @@ const createRecruiterSubmission = async (req, res) => {
   }
 };
 
-// POST: Bulk import submissions
 const bulkImportSubmissions = async (req, res) => {
   try {
-    const { submissions = [] } = req.body;
-    console.log("Received submissions:", submissions);
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet);
 
     const recruiterId = req.user._id;
-    const finalPayload = [];
+    let successCount = 0;
+    let errorCount = 0;
+    const errorLogs = [];
+    const inserted = [];
 
-    for (const [index, s] of submissions.entries()) {
-      const {
-        candidateName,
-        candidateEmail,
-        candidatePhone,
-        client,
-        vendor,
-        date,
-        notes,
-        ...extraFields
-      } = s;
+    for (const [index, row] of rows.entries()) {
+      try {
+        const candidateName = (row["Consultant Name"] || row["Candidate Name"] || "").trim();
+        const candidateEmail = (row["Vendor Email"] || row["Candidate Email"] || "").trim().toLowerCase();
+        const candidatePhone = (row["Vendor Contact"] || row["Candidate Phone"] || "").toString().replace(/\D/g, "");
+        const client = (row["Client"] || "").trim();
+        const vendor = (row["Vendor Name"] || row["Vendor"] || "").trim();
+        const notes = row["Unnamed: 11"] || row["Notes"] || "";
+        const date = row["Date"] ? new Date(row["Date"]) : new Date();
 
-      if (!candidateName && !candidateEmail && !candidatePhone) {
-        console.log(`Row ${index + 1} skipped: Missing candidate details`);
-        continue;
-      }
+        const customFields = {
+          Technology: row["Technology"] || "",
+          Location: row["Location"] || "",
+          Rate: row["Rate"] || "",
+          Recruiter: row["Recruiter"] || "",
+          Implementation: row["Implementation"] || "",
+        };
 
-      const normalizedName = candidateName?.toLowerCase().trim();
-      const normalizedEmail = candidateEmail?.toLowerCase().trim();
-      const normalizedPhone = candidatePhone?.replace(/\D/g, "");
+        if (!candidateName && !candidateEmail && !candidatePhone) {
+          errorLogs.push({ index: index + 1, error: "Missing name, email, and phone" });
+          errorCount++;
+          continue;
+        }
 
-      let candidate = null;
+        let candidate = null;
+        if (candidateEmail) candidate = await User.findOne({ email: candidateEmail });
+        if (!candidate && candidatePhone) candidate = await User.findOne({ phone: candidatePhone });
+        if (!candidate && candidateName)
+          candidate = await User.findOne({ name: new RegExp(`^${candidateName}$`, "i") });
 
-      if (normalizedEmail) {
-        candidate = await User.findOne({ email: normalizedEmail });
-        if (candidate) console.log(`Matched by email: ${normalizedEmail}`);
-      }
-      if (!candidate && normalizedPhone) {
-        candidate = await User.findOne({ phone: normalizedPhone });
-        if (candidate) console.log(`Matched by phone: ${normalizedPhone}`);
-      }
-      if (!candidate && normalizedName) {
-        candidate = await User.findOne({ name: new RegExp(`^${normalizedName}$`, "i") });
-        if (candidate) console.log(`Matched by name: ${normalizedName}`);
-      }
+        if (!candidate) {
+          candidate = await User.create({
+            name: candidateName,
+            email: candidateEmail || undefined,
+            phone: candidatePhone || undefined,
+            role: "candidate",
+          });
+        }
 
-      if (!candidate) {
-        candidate = await User.create({
-          name: candidateName,
-          email: normalizedEmail || undefined,
-          phone: normalizedPhone || undefined,
-          role: "candidate",
+        const existing = await Submission.findOne({
+          recruiter: recruiterId,
+          candidate: candidate._id,
+          client,
+          date: {
+            $gte: new Date(date.setHours(0, 0, 0, 0)),
+            $lte: new Date(date.setHours(23, 59, 59, 999)),
+          },
         });
-        console.log(`Created new candidate: ${candidateName}`);
+
+        if (existing) {
+          errorLogs.push({ index: index + 1, error: "Duplicate submission skipped" });
+          errorCount++;
+          continue;
+        }
+
+        const submission = await Submission.create({
+          recruiter: recruiterId,
+          candidate: candidate._id,
+          client,
+          vendor,
+          date,
+          notes,
+          customFields,
+        });
+
+        inserted.push(submission);
+        successCount++;
+      } catch (err) {
+        errorLogs.push({ index: index + 1, error: err.message });
+        errorCount++;
       }
-
-      finalPayload.push({
-        recruiter: recruiterId,
-        candidate: candidate._id,
-        client,
-        vendor,
-        date: date ? new Date(date) : new Date(),
-        notes: notes || "",
-        customFields: extraFields,
-      });
     }
 
-    if (!finalPayload.length) {
-      console.log("No valid submissions to insert.");
-      return res.status(400).json({ message: "No valid submissions found" });
-    }
-
-    console.log("Final payload to insert:", finalPayload);
-    await Submission.insertMany(finalPayload);
-    res.status(201).json({ message: "Bulk submissions added", count: finalPayload.length });
+    return res.json({
+      success: true,
+      imported: successCount,
+      failed: errorCount,
+      inserted,
+      errors: errorLogs,
+    });
   } catch (err) {
-    console.error("Error in bulkImportSubmissions:", err.message);
-    console.error(err.stack);
-    res.status(500).json({ message: "Failed to import submissions" });
+    console.error("Recruiter Excel import error:", err);
+    res.status(500).json({ success: false, message: "Failed to import submissions" });
   }
 };
 

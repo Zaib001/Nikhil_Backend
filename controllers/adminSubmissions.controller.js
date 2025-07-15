@@ -181,99 +181,126 @@ const getSubmissionsAnalytics = async (req, res, next) => {
     next(err);
   }
 };
+const importSubmissions = async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
 
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet);
 
-const importSubmissions = [
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    let successCount = 0;
+    let errorCount = 0;
+    const errorLogs = [];
+    const inserted = [];
 
-      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+    for (const [index, row] of rows.entries()) {
+      try {
+        const candidateName = (row["Consultant Name"] || row["Candidate Name"] || "").trim();
+        const candidateEmail = (row["Vendor Email"] || row["Candidate Email"] || "").trim().toLowerCase();
+        const candidatePhone = (row["Vendor Contact"] || row["Candidate Phone"] || "").toString().replace(/\D/g, "");
+        const client = (row["Client"] || "").trim();
+        const vendor = (row["Vendor Name"] || row["Vendor"] || "").trim();
+        const notes = row["Unnamed: 11"] || row["Notes"] || "";
+        const date = row["Date"] ? new Date(row["Date"]) : new Date();
 
-      const finalPayload = [];
+        const customFields = {
+          Technology: row["Technology"] || "",
+          Location: row["Location"] || "",
+          Rate: row["Rate"] || "",
+          Recruiter: row["Recruiter"] || "",
+          Implementation: row["Implementation"] || "",
+        };
 
-      for (const [index, row] of rows.entries()) {
-        const {
-          Candidate: candidateName,
-          CandidateEmail: candidateEmail,
-          CandidatePhone: candidatePhone,
-          Recruiter: recruiterName,
-          Client: client,
-          Vendor: vendor,
-          Date: date,
-          Notes: notes,
-          ...meta
-        } = row;
+        const recruiterEmail = (row["Recruiter Email"] || "").trim().toLowerCase();
+        let recruiter = null;
 
-        if (!candidateName && !candidateEmail && !candidatePhone) {
-          console.log(`Row ${index + 1} skipped: Missing candidate details`);
+        if (recruiterEmail) {
+          recruiter = await User.findOne({ email: recruiterEmail, role: "recruiter" });
+        }
+
+        if (!recruiter) {
+          recruiter = req.user.role === "admin" ? req.user : null;
+        }
+
+        if (!recruiter) {
+          errorLogs.push({ index: index + 1, error: "No recruiter found for row" });
+          errorCount++;
           continue;
         }
 
-        const normalizedName = candidateName?.toLowerCase().trim();
-        const normalizedEmail = candidateEmail?.toLowerCase().trim();
-        const normalizedPhone = candidatePhone?.replace(/\D/g, "");
+        if (!candidateName && !candidateEmail && !candidatePhone) {
+          errorLogs.push({ index: index + 1, error: "Missing name, email, and phone" });
+          errorCount++;
+          continue;
+        }
 
+        // Check for existing candidate
         let candidate = null;
-
-        if (normalizedEmail) {
-          candidate = await User.findOne({ email: normalizedEmail });
-          if (candidate) console.log(`Matched by email: ${normalizedEmail}`);
-        }
-        if (!candidate && normalizedPhone) {
-          candidate = await User.findOne({ phone: normalizedPhone });
-          if (candidate) console.log(`Matched by phone: ${normalizedPhone}`);
-        }
-        if (!candidate && normalizedName) {
-          candidate = await User.findOne({ name: new RegExp(`^${normalizedName}$`, "i") });
-          if (candidate) console.log(`Matched by name: ${normalizedName}`);
-        }
+        if (candidateEmail) candidate = await User.findOne({ email: candidateEmail });
+        if (!candidate && candidatePhone) candidate = await User.findOne({ phone: candidatePhone });
+        if (!candidate && candidateName)
+          candidate = await User.findOne({ name: new RegExp(`^${candidateName}$`, "i") });
 
         if (!candidate) {
           candidate = await User.create({
             name: candidateName,
-            email: normalizedEmail || undefined,
-            phone: normalizedPhone || undefined,
+            email: candidateEmail || undefined,
+            phone: candidatePhone || undefined,
             role: "candidate",
           });
-          console.log(`Created new candidate: ${candidateName}`);
         }
 
-        let recruiter = null;
-        if (recruiterName) {
-          recruiter = await User.findOne({ name: recruiterName });
-          if (!recruiter) {
-            recruiter = await User.create({ name: recruiterName, role: "recruiter" });
-            console.log(`Created new recruiter: ${recruiterName}`);
-          }
+        const existing = await Submission.findOne({
+          recruiter: recruiter._id,
+          candidate: candidate._id,
+          client: client,
+          date: {
+            $gte: new Date(date.setHours(0, 0, 0, 0)),
+            $lte: new Date(date.setHours(23, 59, 59, 999)),
+          },
+        });
+
+        if (existing) {
+          errorLogs.push({ index: index + 1, error: "Duplicate submission skipped" });
+          errorCount++;
+          continue;
         }
 
-        finalPayload.push({
-          recruiter: recruiter?._id,
+        const submission = await Submission.create({
+          recruiter: recruiter._id,
           candidate: candidate._id,
           client,
           vendor,
-          date: date ? new Date(date) : new Date(),
-          notes: notes || "",
-          meta,
+          date,
+          notes,
+          customFields,
         });
-      }
 
-      if (!finalPayload.length) {
-        return res.status(400).json({ message: "No valid submissions found" });
+        inserted.push(submission);
+        successCount++;
+      } catch (err) {
+        errorLogs.push({ index: index + 1, error: err.message });
+        errorCount++;
       }
-
-      await Submission.insertMany(finalPayload);
-      res.status(201).json({ message: "Submissions imported", count: finalPayload.length });
-    } catch (err) {
-      console.error("Admin import error:", err);
-      res.status(500).json({ message: "Failed to import submissions" });
     }
-  },
-];
+
+    return res.json({
+      success: true,
+      imported: successCount,
+      failed: errorCount,
+      inserted,
+      errors: errorLogs,
+    });
+  } catch (err) {
+    console.error("Admin Excel import error:", err);
+    res.status(500).json({ success: false, message: "Failed to import submissions" });
+  }
+};
+
+
 
 
 

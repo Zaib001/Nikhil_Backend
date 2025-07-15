@@ -12,10 +12,19 @@ const {
 } = require("../controllers/adminSubmissions.controller");
 
 const { protect, requireRole } = require("../middleware/authMiddleware");
+const multer = require("multer");
+const upload = multer();
 
-router.use(protect); 
+router.post(
+  "/import",
+  upload.single("file"),
+  protect,
+  requireRole("admin"),
+  importSubmissions
+);
+
+router.use(protect);
 router.use(requireRole("admin"));
-
 
 router.get("/", getAllSubmissions);
 router.put("/:id", updateSubmission);
@@ -24,6 +33,5 @@ router.put("/:id/reviewer", assignReviewer);
 router.get("/export/csv", exportSubmissionsCSV);
 router.get("/export/pdf", exportSubmissionsPDF);
 router.get("/analytics", getSubmissionsAnalytics);
-router.post("/import", importSubmissions);
 
 module.exports = router;
