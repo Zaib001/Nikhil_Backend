@@ -8,6 +8,7 @@ const {
   exportSalariesCSV,
   exportSalariesPDF,
   sendSalarySlip,
+  getSalaryProjections
 } = require("../controllers/adminSalary.controller");
 
 const { protect, requireRole } = require("../middleware/authMiddleware");
@@ -23,5 +24,6 @@ router.delete("/:id", deleteSalary);
 router.get("/export/csv", exportSalariesCSV);
 router.get("/export/pdf", exportSalariesPDF);
 router.post("/:id/send-slip", sendSalarySlip);
+router.post("/projections", getSalaryProjections);
 
 module.exports = router;

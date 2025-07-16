@@ -61,82 +61,57 @@ const getUnpaidLeaveDays = async (userId, monthStr, allowedPTO = 1) => {
   return Math.max(0, leaveDays - allowedPTO);
 };
 
-const calculateSalary = async (user, monthStr, config = {}, isProjection = false) => {
+const calculateSalary = async (user, monthStr) => {
   const [year, mon] = monthStr.split("-").map(Number);
-  const expectedHours = getWorkingDays(year, mon - 1, Object.keys(US_HOLIDAYS).map(d => new Date(d))) * 8;
+  const expectedHours = getWorkingDays(year, mon, Object.keys(US_HOLIDAYS).map(d => new Date(d))) * 8;
   const role = user.role;
-  const allowedPTO = config.ptoDaysAllocated ?? user.ptoDaysAllocated ?? 1;
-
-  let workedHours = 0;
-  let unpaidLeaveDays = 0;
-
-  if (!isProjection) {
-    const weekHoursData = await getTotalWorkedHoursByWeek(user._id, monthStr);
-    workedHours = Object.values(weekHoursData).reduce((a, b) => a + b, 0);
-    unpaidLeaveDays = await getUnpaidLeaveDays(user._id, monthStr, allowedPTO);
-  } else {
-    workedHours = expectedHours;
-    unpaidLeaveDays = 0;
-  }
+  const weekHours = await getTotalWorkedHoursByWeek(user._id, monthStr);
+  const workedHours = Object.values(weekHours).reduce((a, b) => a + b, 0);
 
   let hourlyRate = 0;
   let basePay = 0;
   let finalPay = 0;
+  let unpaidLeaveDays = 0;
   let ptoDeduction = 0;
   let bonus = 0;
 
-  if (role === "recruiter") {
-    basePay = config?.base ?? user.annualSalary / 12 ?? 0;
-    hourlyRate = expectedHours > 0 ? basePay / expectedHours : 0;
+  const allowedPTO = user.ptoDaysAllocated || 1;
 
+  if (role === "recruiter") {
+    basePay = user.annualSalary ? user.annualSalary / 12 : 0;
+    hourlyRate = expectedHours > 0 ? basePay / expectedHours : 0;
+    unpaidLeaveDays = await getUnpaidLeaveDays(user._id, monthStr, allowedPTO);
     ptoDeduction = unpaidLeaveDays * 8 * hourlyRate;
     finalPay = (workedHours * hourlyRate) - ptoDeduction;
 
-    const bonusStartMonth = config.bonusStartDate ?? user.bonusStartDate;
-    const bonusAmount = config.bonusAmount ?? user.bonusAmount ?? 0;
-
-    const isBonusMonth = !bonusStartMonth || (new Date(bonusStartMonth).getMonth() + 1 === mon);
-    if (bonusAmount && isBonusMonth) {
-      bonus = bonusAmount;
+    if (user.bonusAmount && (!user.bonusStartDate || new Date(user.bonusStartDate).getMonth() + 1 === mon)) {
+      bonus = user.bonusAmount;
       finalPay += bonus;
     }
 
   } else {
-    // Candidate logic
     const joined = new Date(user.joiningDate);
-    const payCycleMonth = config.payCycleChangeMonth ?? user.payCycleChangeMonth ?? 0;
+    const payCycleMonth = user.payCycleChangeMonth ?? 0;
     const hasTransitioned = mon >= payCycleMonth || year > joined.getFullYear();
 
-   if (!hasTransitioned) {
-  basePay = (config.annualSalary ?? user.annualSalary ?? 0) / 12;
-  hourlyRate = basePay / 173; 
-  finalPay = workedHours * hourlyRate;
-} else {
-  const rate = config?.vendorBillRate ?? user.vendorBillRate ?? 0;
-  const share = config?.candidateShare ?? user.candidateShare ?? 0;
-  hourlyRate = rate * (share / 100);
-  finalPay = workedHours * hourlyRate;
-  basePay = finalPay;
-}
-
+    if (!hasTransitioned) {
+      basePay = user.annualSalary / 12;
+      hourlyRate = expectedHours > 0 ? basePay / expectedHours : 0;
+      finalPay = workedHours * hourlyRate;
+    } else {
+      const rate = user.vendorBillRate || 0;
+      const share = user.candidateShare || 0;
+      hourlyRate = rate * (share / 100);
+      finalPay = workedHours * hourlyRate;
+      basePay = finalPay;
+    }
   }
 
-  const weekHoursData = isProjection
-    ? {} // No breakdown in projections
-    : await getTotalWorkedHoursByWeek(user._id, monthStr);
-
-  const weeklyBreakdown = Object.entries(weekHoursData || {}).map(([week, hrs]) => ({
+  const weeklyBreakdown = Object.entries(weekHours).map(([week, hrs]) => ({
     week,
     hours: hrs,
-    amount: +(hrs * hourlyRate).toFixed(2),
+    amount: +(hrs * hourlyRate).toFixed(2)
   }));
-  console.log(`>>> Projection for ${monthStr}:`, {
-    role,
-    basePay,
-    hourlyRate,
-    workedHours,
-    finalPay,
-  });
 
   return {
     userId: user._id,
@@ -152,7 +127,5 @@ const calculateSalary = async (user, monthStr, config = {}, isProjection = false
     weeklyBreakdown
   };
 };
-
-
 
 module.exports = { calculateSalary };

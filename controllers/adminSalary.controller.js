@@ -8,6 +8,7 @@ const stream = require("stream");
 const sendEmail = require("../utils/sendEmail");
 const { calculateSalary } = require("./adminSalary.refactored");
 
+
 const getAllSalaries = async (req, res) => {
   const { month } = req.query;
   const filter = month ? { month } : {};
@@ -41,13 +42,13 @@ const addSalary = async (req, res) => {
 
   try {
     if (!userId || !month) {
-      return res.status(400).json({ message: "Missing required fields (userId, month)" });
+      return res.status(400).json({ message: "Missing required fields: userId and month" });
     }
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Run salary calculation using input config
+    // Calculate base salary for the requested month
     const salaryCalc = await calculateSalary(user, month, {
       base,
       mode,
@@ -58,19 +59,25 @@ const addSalary = async (req, res) => {
       bonusAmount,
     });
 
+    // Bonus logic
     const parsedBonus = Number(bonusAmount) || 0;
-    const isRecurringBonusValid = isBonusRecurring && bonusEndMonth && new Date(bonusEndMonth + "-01") >= new Date(month + "-01");
+    const isRecurringBonusValid =
+      isBonusRecurring &&
+      bonusEndMonth &&
+      new Date(`${bonusEndMonth}-01`) >= new Date(`${month}-01`);
     const isOneTimeBonusValid = !isBonusRecurring && bonusType === "one-time";
 
     if (parsedBonus && (isRecurringBonusValid || isOneTimeBonusValid)) {
       salaryCalc.finalPay += parsedBonus;
     }
 
+    // Format custom fields (ensure all values are strings)
     const formattedCustomFields = {};
     for (const key in customFields) {
       formattedCustomFields[key] = String(customFields[key]);
     }
 
+    // Save salary record
     const salary = await Salary.create({
       userId,
       month,
@@ -94,13 +101,38 @@ const addSalary = async (req, res) => {
       ptoDaysAllocated,
       customFields: formattedCustomFields,
       previewMonth,
-      unpaidLeaveDays: 0,
+      unpaidLeaveDays: salaryCalc.unpaidLeaveDays || 0,
       remarks: `Worked ${salaryCalc.workedHours} hour(s) at $${salaryCalc.hourlyRate.toFixed(2)}/hr`,
     });
 
-    return res.status(201).json({ message: "Salary added successfully", salary });
-  } catch (err) {
-    console.error("Error in addSalary:", err.message);
+    const futureProjections = [];
+    const projectionCount = 12;
+
+    for (let i = 1; i <= projectionCount; i++) {
+      const [year, monthNum] = month.split("-").map(Number);
+      const projectedDate = new Date(year, monthNum - 1 + i);
+      const projectedMonth = `${projectedDate.getFullYear()}-${String(projectedDate.getMonth() + 1).padStart(2, "0")}`;
+
+      const projectedCalc = await calculateSalary(user, projectedMonth);
+
+      futureProjections.push({
+        month: projectedMonth,
+        finalPay: +projectedCalc.finalPay.toFixed(2),
+        workedHours: projectedCalc.workedHours,
+        expectedHours: projectedCalc.expectedHours,
+        bonus: projectedCalc.bonus,
+        ptoDeduction: projectedCalc.ptoDeduction,
+      });
+    }
+
+    return res.status(201).json({
+      message: "Salary added successfully",
+      salary,
+      futureProjections, 
+    });
+
+  } catch (error) {
+    console.error("Error in addSalary:", error.message);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -246,6 +278,85 @@ const sendSalarySlip = async (req, res) => {
     res.json({ message: "Salary slip emailed successfully." });
   });
 };
+const getSalaryProjections = async (req, res) => {
+  try {
+    const {
+      userId,
+      month,
+      base,
+      mode,
+      ptoType,
+      ptoDaysAllocated,
+      bonusType,
+      bonusStartDate,
+      bonusEndDate,
+      bonusAmount,
+      payType,
+      payTypeEffectiveDate,
+      fixedPhaseDuration,
+      vendorBillRate,
+      candidateShare,
+      isBonusRecurring,
+      bonusEndMonth,
+      enablePTO,
+      previewMonth,
+      customFields,
+    } = req.body;
+
+    if (!userId || !month) {
+      return res.status(400).json({ message: "userId and month are required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const futureProjections = [];
+    const projectionCount = 3;
+
+    for (let i = 0; i < projectionCount; i++) {
+      const [year, mon] = month.split("-").map(Number);
+      const futureDate = new Date(year, mon - 1 + i);
+      const futureMonthStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, "0")}`;
+
+      const futureSalary = await calculateSalary(user, futureMonthStr, {
+        base: base ?? user.annualSalary / 12,
+        mode,
+        ptoType,
+        ptoDaysAllocated,
+        bonusType,
+        bonusStartDate,
+        bonusEndDate,
+        bonusAmount,
+        payType,
+        payTypeEffectiveDate,
+        fixedPhaseDuration,
+        vendorBillRate: vendorBillRate ?? user.vendorBillRate,
+        candidateShare: candidateShare ?? user.candidateShare,
+        isBonusRecurring,
+        bonusEndMonth,
+        enablePTO,
+        previewMonth,
+        customFields,
+      }, true); // <- important for projection mode
+
+      futureProjections.push({
+        month: futureMonthStr,
+        finalPay: +futureSalary.finalPay.toFixed(2),
+        workedHours: futureSalary.workedHours,
+        expectedHours: futureSalary.expectedHours,
+        bonus: futureSalary.bonus,
+        ptoDeduction: futureSalary.ptoDeduction,
+      });
+    }
+
+    return res.json({ projections: futureProjections });
+  } catch (err) {
+    console.error("Error in getSalaryProjections:", err.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
 
 module.exports = {
   getAllSalaries,
@@ -254,5 +365,6 @@ module.exports = {
   addSalary,
   updateSalary,
   deleteSalary,
-  exportSalariesCSV
+  exportSalariesCSV,
+  getSalaryProjections
 };
