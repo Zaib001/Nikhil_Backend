@@ -16,6 +16,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://jobportal-mo58.onrender.com",
+  "https://job-portal-frontend-e3n4.onrender.com"
 ];
 
 app.use(
