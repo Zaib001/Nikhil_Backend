@@ -3,14 +3,21 @@ const bcrypt = require("bcryptjs");
 
 const getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find()
+    const { role } = req.query;
+
+    const filter = {};
+    if (role) filter.role = role;
+
+    const users = await User.find(filter)
       .select("-password")
       .populate("assignedBy", "name");
+
     res.json({ success: true, count: users.length, users });
   } catch (err) {
     next(err);
   }
 };
+
 
 const toggleUserVerification = async (req, res, next) => {
   try {

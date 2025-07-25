@@ -11,10 +11,12 @@ const {
 } = require("../controllers/adminController");
 const { protect, requireRole } = require("../middleware/authMiddleware");
 
+
+router.get("/users",protect,requireRole("recruiter" , "admin"), getAllUsers);
+
 router.use(protect); 
 router.use(requireRole("admin"));
 
-router.get("/users", getAllUsers);
 router.post("/users", createUser);
 router.put("/users/:id", updateUser);
 router.delete("/users/:id", deleteUser);

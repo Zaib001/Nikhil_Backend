@@ -29,18 +29,42 @@ const formatDate = (date) => new Date(date).toLocaleDateString("en-GB");
 // GET all submissions with optional filters
 const getAllSubmissions = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, recruiterId, mode = 'detailed' } = req.query;
 
     const query = {};
     if (startDate) query.date = { ...query.date, $gte: new Date(startDate) };
     if (endDate) query.date = { ...query.date, $lte: new Date(endDate) };
+    if (recruiterId) query.recruiter = recruiterId;
 
-    const submissions = await Submissions.find(query)
-      .populate("candidate", "name email") 
-      .populate("recruiter", "name email")  
-      .sort({ date: -1 });
+    if (mode === 'summary') {
+      // Get recruiter summary with counts
+      const recruiterSummary = await Submissions.aggregate([
+        { $match: query },
+        { $group: { 
+          _id: "$recruiter", 
+          count: { $sum: 1 },
+          latestDate: { $max: "$date" }
+        }},
+        { $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "recruiter"
+        }},
+        { $unwind: "$recruiter" },
+        { $sort: { count: -1 } }
+      ]);
 
-    res.json({ submissions });
+      return res.json({ recruiters: recruiterSummary });
+    } else {
+      // Get detailed submissions
+      const submissions = await Submissions.find(query)
+        .populate("candidate", "name email") 
+        .populate("recruiter", "name email")  
+        .sort({ date: -1 });
+
+      return res.json({ submissions });
+    }
   } catch (error) {
     console.error("Fetch error:", error);
     res.status(500).json({ message: "Failed to fetch submissions" });
