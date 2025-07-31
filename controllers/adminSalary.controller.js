@@ -6,7 +6,7 @@ const { Parser } = require("json2csv");
 const PDFDocument = require("pdfkit");
 const stream = require("stream");
 const sendEmail = require("../utils/sendEmail");
-const { calculateSalary } = require("./adminSalary.refactored");
+const US_HOLIDAYS = require("../data/holidays.json");
 
 
 const getAllSalaries = async (req, res) => {
@@ -16,6 +16,162 @@ const getAllSalaries = async (req, res) => {
   console.log(salaries)
   res.json(salaries);
 };
+
+// Helper: Get working days (Mon-Fri, including holidays)
+const getWorkingDays = (year, month) => {
+  const date = new Date(year, month - 1, 1);
+  let count = 0;
+  while (date.getMonth() === month - 1) {
+    if (date.getDay() >= 1 && date.getDay() <= 5) count++; // Mon-Fri
+    date.setDate(date.getDate() + 1);
+  }
+  return count;
+};
+
+// Helper: Get actual worked days from timesheet
+const getWorkedDays = async (userId, monthStr) => {
+  const [year, mon] = monthStr.split("-").map(Number);
+  const start = new Date(year, mon - 1, 1);
+  const end = new Date(year, mon, 0);
+
+  const timesheets = await Timesheet.find({
+    user: userId,
+    date: { $gte: start, $lte: end },
+    status: "approved"
+  });
+
+  return timesheets.filter(ts => ts.status === "worked").length;
+};
+
+// Helper: Get off days (PTOs) from timesheet
+const getOffDays = async (userId, monthStr) => {
+  const [year, mon] = monthStr.split("-").map(Number);
+  const start = new Date(year, mon - 1, 1);
+  const end = new Date(year, mon, 0);
+
+  const timesheets = await Timesheet.find({
+    user: userId,
+    date: { $gte: start, $lte: end },
+    status: "approved"
+  });
+
+  return timesheets.filter(ts => ts.status === "off").length;
+};
+
+// Helper: Calculate carry-forward PTO
+const getCarryForwardPTO = async (userId, currentMonth) => {
+  const prevMonth = new Date(new Date(currentMonth + "-01").setMonth(new Date(currentMonth + "-01").getMonth() - 1))
+    .toISOString().slice(0, 7);
+
+  const prevSalary = await Salary.findOne({
+    userId,
+    month: prevMonth
+  });
+
+  if (!prevSalary) return 0;
+
+  const allowedPTO = prevSalary.ptoDaysAllocated || 1;
+  const usedPTO = prevSalary.offDays || 0;
+  const unusedPTO = Math.max(0, allowedPTO - usedPTO);
+
+  return unusedPTO;
+};
+const calculateSalary = async (user, monthStr, config = {}, isProjection = false) => {
+  const [year, mon] = monthStr.split("-").map(Number);
+  const workingDays = getWorkingDays(year, mon);
+  const role = user.role;
+
+  // Get PTO settings
+  const basePTO = config.ptoDaysAllocated ?? user.ptoDaysAllocated ?? 1;
+  const carryForwardPTO = await getCarryForwardPTO(user._id, monthStr);
+  const allowedPTO = basePTO + carryForwardPTO;
+
+  let workedDays = 0;
+  let offDays = 0;
+  let unpaidDays = 0;
+
+  if (!isProjection) {
+    workedDays = await getWorkedDays(user._id, monthStr);
+    offDays = await getOffDays(user._id, monthStr);
+    unpaidDays = Math.max(0, offDays - allowedPTO);
+  } else {
+    workedDays = workingDays - (config.ptoDaysAllocated || 1);
+    offDays = config.ptoDaysAllocated || 1;
+    unpaidDays = 0;
+  }
+
+  let basePay = 0;
+  let finalPay = 0;
+  let ptoDeduction = 0;
+  let bonus = 0;
+  let hourlyRate = 0;
+
+  if (role === "recruiter") {
+    // Recruiter salary logic
+    basePay = config?.base ?? (user.salaryType === "yearly" ? user.annualSalary / 12 : user.monthlySalary);
+    const perDaySalary = basePay / workingDays;
+    ptoDeduction = unpaidDays * perDaySalary;
+    finalPay = basePay - ptoDeduction;
+
+    // Bonus calculation
+    const bonusAmount = config.bonusAmount ?? user.bonusAmount ?? 0;
+    if (bonusAmount > 0) {
+      if (config.bonusType === "one-time" || user.bonusType === "one-time") {
+        bonus = bonusAmount;
+      } else if (new Date(monthStr + "-01") >= new Date(config.bonusStartDate || user.bonusStartDate) &&
+        new Date(monthStr + "-01") <= new Date(config.bonusEndDate || user.bonusEndDate)) {
+        bonus = bonusAmount;
+      }
+    }
+    finalPay += bonus;
+
+  } else {
+    // Candidate salary logic
+    const joined = new Date(user.joiningDate);
+    const currentDate = new Date(year, mon - 1, 1);
+    const monthsWorked = (currentDate.getFullYear() - joined.getFullYear()) * 12 +
+      (currentDate.getMonth() - joined.getMonth());
+    const shouldUsePercentage = monthsWorked >= (user.percentagePayAfterMonths || 6);
+
+    if (!shouldUsePercentage) {
+      // Fixed pay mode
+      basePay = (config.annualSalary ?? user.annualSalary ?? 0) / 12;
+      hourlyRate = basePay / (workingDays * 8);
+      finalPay = (workedDays * 8) * hourlyRate;
+    } else {
+      // Percentage pay mode
+      const clientRate = config.vendorBillRate ?? user.vendorBillRate ?? 0;
+      const percentage = config.candidateShare ?? user.candidateShare ?? 0;
+      hourlyRate = clientRate * (percentage / 100);
+      finalPay = (workedDays * 8) * hourlyRate;
+    }
+
+    // PTO deduction for candidates
+    if (config.enablePTO || user.enablePTO) {
+      ptoDeduction = unpaidDays * 8 * hourlyRate;
+      finalPay -= ptoDeduction;
+    }
+  }
+
+  return {
+    userId: user._id,
+    role,
+    month: monthStr,
+    workingDays,
+    workedDays,
+    offDays,
+    unpaidDays,
+    hourlyRate: +Number(hourlyRate || 0).toFixed(2),
+    ptoDeduction: +Number(ptoDeduction || 0).toFixed(2),
+    bonus: +Number(bonus || 0).toFixed(2),
+    basePay: +Number(basePay || 0).toFixed(2),
+    finalPay: +Number(finalPay || 0).toFixed(2),
+    carryForwardPTO,
+    allowedPTO
+  };
+
+};
+
 const addSalary = async (req, res) => {
   const {
     userId,
@@ -24,20 +180,16 @@ const addSalary = async (req, res) => {
     currency,
     bonusAmount = 0,
     bonusType = "one-time",
-    bonusFrequency = "monthly",
+    isBonusRecurring = false,
     bonusStartDate,
     bonusEndDate,
-    isBonusRecurring = false,
-    bonusEndMonth,
     enablePTO = false,
-    ptoType = "monthly",
-    ptoDaysAllocated = 0,
-    customFields = {},
-    previewMonth,
+    ptoDaysAllocated = 1,
     payType,
     mode,
     vendorBillRate,
     candidateShare,
+    salaryType = "monthly"
   } = req.body;
 
   try {
@@ -48,94 +200,83 @@ const addSalary = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Calculate base salary for the requested month
+    // Calculate salary
     const salaryCalc = await calculateSalary(user, month, {
       base,
       mode,
-      ptoType,
       ptoDaysAllocated,
       bonusType,
-      bonusStartDate,
       bonusAmount,
+      bonusStartDate,
+      bonusEndDate,
+      enablePTO,
+      payType,
+      vendorBillRate,
+      candidateShare,
+      salaryType
     });
-
-    // Bonus logic
-    const parsedBonus = Number(bonusAmount) || 0;
-    const isRecurringBonusValid =
-      isBonusRecurring &&
-      bonusEndMonth &&
-      new Date(`${bonusEndMonth}-01`) >= new Date(`${month}-01`);
-    const isOneTimeBonusValid = !isBonusRecurring && bonusType === "one-time";
-
-    if (parsedBonus && (isRecurringBonusValid || isOneTimeBonusValid)) {
-      salaryCalc.finalPay += parsedBonus;
-    }
-
-    // Format custom fields (ensure all values are strings)
-    const formattedCustomFields = {};
-    for (const key in customFields) {
-      formattedCustomFields[key] = String(customFields[key]);
-    }
 
     // Save salary record
     const salary = await Salary.create({
       userId,
       month,
-      base,
-      finalAmount: Math.round(salaryCalc.finalPay * 100) / 100,
+      base: salaryCalc.basePay,
+      finalAmount: salaryCalc.finalPay,
       hourlyRate: salaryCalc.hourlyRate,
-      bonus: parsedBonus,
+      bonus: salaryCalc.bonus,
       bonusType,
-      bonusFrequency,
+      isBonusRecurring,
       bonusStartDate,
       bonusEndDate,
-      isBonusRecurring,
-      bonusEndMonth,
       currency: currency || user.currency,
       payType: payType ?? user.payType,
-      mode: mode ?? user.salaryMode,
+      salaryMode: mode ?? user.salaryMode,
       vendorBillRate: vendorBillRate ?? user.vendorBillRate,
       candidateShare: candidateShare ?? user.candidateShare,
       enablePTO,
-      ptoType,
       ptoDaysAllocated,
-      customFields: formattedCustomFields,
-      previewMonth,
-      unpaidLeaveDays: salaryCalc.unpaidLeaveDays || 0,
-      remarks: `Worked ${salaryCalc.workedHours} hour(s) at $${salaryCalc.hourlyRate.toFixed(2)}/hr`,
+      workingDays: salaryCalc.workingDays,
+      workedDays: salaryCalc.workedDays,
+      offDays: salaryCalc.offDays,
+      unpaidDays: salaryCalc.unpaidDays,
+      carryForwardPTO: salaryCalc.carryForwardPTO,
+      allowedPTO: salaryCalc.allowedPTO
     });
 
+    // Generate 12-month projection
     const futureProjections = [];
-    const projectionCount = 12;
-
-    for (let i = 1; i <= projectionCount; i++) {
+    for (let i = 1; i <= 12; i++) {
       const [year, monthNum] = month.split("-").map(Number);
-      const projectedDate = new Date(year, monthNum - 1 + i);
-      const projectedMonth = `${projectedDate.getFullYear()}-${String(projectedDate.getMonth() + 1).padStart(2, "0")}`;
+      const projectedDate = new Date(year, monthNum - 1 + i, 1);
+      const projectedMonth = projectedDate.toISOString().slice(0, 7);
 
-      const projectedCalc = await calculateSalary(user, projectedMonth);
+      const projection = await calculateSalary(user, projectedMonth, {
+        ...req.body,
+        month: projectedMonth
+      }, true);
 
       futureProjections.push({
         month: projectedMonth,
-        finalPay: +projectedCalc.finalPay.toFixed(2),
-        workedHours: projectedCalc.workedHours,
-        expectedHours: projectedCalc.expectedHours,
-        bonus: projectedCalc.bonus,
-        ptoDeduction: projectedCalc.ptoDeduction,
+        basePay: projection.basePay,
+        finalPay: projection.finalPay,
+        workingDays: projection.workingDays,
+        allowedPTO: projection.allowedPTO
       });
     }
 
     return res.status(201).json({
       message: "Salary added successfully",
       salary,
-      futureProjections, 
+      futureProjections
     });
 
   } catch (error) {
-    console.error("Error in addSalary:", error.message);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error("Error in addSalary:", error);
+    return res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
+
 
 
 
