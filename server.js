@@ -58,10 +58,11 @@ app.use("/api/recruiter/candidates", require("./routes/recruiterCandidates.route
 app.use("/api/recruiter/timesheets", require("./routes/recruiterTimesheet.routes"));
 app.use("/api/recruiter/pto", require("./routes/recruiterPto.routes"));
 app.use("/api/documents", require("./routes/documents"));
+app.use("/api/custom", require("./routes/customSections.js"));
 
 require("./cron/slipJob");
 
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -17,7 +17,6 @@ const getAllSalaries = async (req, res) => {
   res.json(salaries);
 };
 
-// Helper: Get working days (Mon-Fri, including holidays)
 const getWorkingDays = (year, month) => {
   const date = new Date(year, month - 1, 1);
   let count = 0;
@@ -28,7 +27,6 @@ const getWorkingDays = (year, month) => {
   return count;
 };
 
-// Helper: Get actual worked days from timesheet
 const getWorkedDays = async (userId, monthStr) => {
   const [year, mon] = monthStr.split("-").map(Number);
   const start = new Date(year, mon - 1, 1);
@@ -43,7 +41,6 @@ const getWorkedDays = async (userId, monthStr) => {
   return timesheets.filter(ts => ts.status === "worked").length;
 };
 
-// Helper: Get off days (PTOs) from timesheet
 const getOffDays = async (userId, monthStr) => {
   const [year, mon] = monthStr.split("-").map(Number);
   const start = new Date(year, mon - 1, 1);
@@ -58,7 +55,6 @@ const getOffDays = async (userId, monthStr) => {
   return timesheets.filter(ts => ts.status === "off").length;
 };
 
-// Helper: Calculate carry-forward PTO
 const getCarryForwardPTO = async (userId, currentMonth) => {
   const prevMonth = new Date(new Date(currentMonth + "-01").setMonth(new Date(currentMonth + "-01").getMonth() - 1))
     .toISOString().slice(0, 7);
